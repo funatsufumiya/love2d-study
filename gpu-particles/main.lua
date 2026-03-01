@@ -3,6 +3,7 @@
 
 local vertex_shader = [[
 extern float particleSize;
+extern float time;
 varying vec4 v_seed;
 varying vec2 v_texcoord;
 
@@ -11,11 +12,19 @@ vec4 position(mat4 transform_projection, vec4 vertex_position)
     v_seed = VertexColor;
     v_texcoord = VertexTexCoord.xy;
 
-    // VertexPosition holds the particle center (we provide same center for 4 corners).
-    // VertexTexCoord gives corner (0/1) which we map to offset centered on (0,0).
+    // VertexPosition holds the particle center (same center for all corners).
+    // VertexTexCoord gives corner flags (0/1) which we map to offset centered on (0,0).
     vec2 corner = VertexTexCoord.xy - vec2(0.5);
     vec2 offset = corner * particleSize;
-    vec4 pos = vertex_position + vec4(offset, 0.0, 0.0);
+
+    // seed controls animation phase / period
+    float seed = VertexColor.r;
+    float period = 1.0 + seed; // seconds
+    float phase = time * 6.2831853 / period; // 2*pi/time_period
+    float amp = particleSize * 1.5;
+    vec2 jitter = vec2(cos(phase + seed * 6.2831853), sin(phase + seed * 6.2831853)) * amp;
+
+    vec4 pos = vertex_position + vec4(offset + jitter, 0.0, 0.0);
     return transform_projection * pos;
 }
 ]]
@@ -28,13 +37,15 @@ varying vec2 v_texcoord;
 
 vec4 effect(vec4 color, Image texture, vec2 texcoord, vec2 pixcoord)
 {
-    // Very simple visual: base color from seed, pulsate with time
-    float s = v_seed.r;
-    float g = v_seed.g;
-    float b = v_seed.b;
-    float t = time;
-    vec3 col = vec3(s, g, b) * (0.5 + 0.5 * sin(t * 2.0 + s * 6.2831));
-    return vec4(col, 1.0) * color;
+    // Use seed to vary color and alpha over time. Alpha cycles with period (1 + seed).
+    float seed = v_seed.r;
+    float period = 1.0 + seed;
+    float m = mod(time, period);
+    float f = m / period;
+    float alpha = abs(sin(f * 6.2831853));
+
+    vec3 col = vec3(seed, 0.5 * seed + 0.25, 1.0 - seed);
+    return vec4(col, alpha) * color;
 }
 ]]
 
